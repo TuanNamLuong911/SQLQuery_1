@@ -1,0 +1,557 @@
+
+/* Ex1. Write a query using DimProduct and DimProductSubcategory tables
+ to display number of product in each EnglishSubcategoryName */ 
+
+ select ds.englishproductsubcategoryname
+ ,count 
+ (productkey) as nop
+ from dimproduct as dp 
+ left join dimproductsubcategory as ds 
+ on dp.productsubcategorykey  = ds.productsubcategorykey
+group by ds.englishproductsubcategoryname
+
+
+ /*Ex 2. From FactInternetSales, DimCustomer 
+Caculate TotalSalesAmount by each CustomerKey in each Year. 
+Retain customers who have total value of orders greater than 5000 per year  */
+
+select dc.customerkey,year(fis.orderdate) as year,
+sum(salesamount) as totalsalesamount
+from factinternetsales as fis
+LEFT join dimcustomer as dc
+on fis.CustomerKey=dc.CustomerKey
+group by dc.customerkey, year(fis.orderdate)
+having sum(salesamount) > 5000
+
+ /* Ex 3: From FactInternetSale, DimProduct, 
+Write a query that create new Color_group, if product color is 'Black' or 'Silver' leave 'Basic', else keep Color. 
+Then Caculate total SalesAmount by new Color_group */ 
+--way 1
+select case when color in ('Black', 'Silver') then 'Basic'
+else color end as color_group
+, sum(salesamount)
+from factinternetsales as fis 
+left join DimProduct as dp 
+on fis.ProductKey=dp.ProductKey
+group by (case when color in ('Black', 'Silver') then 'Basic'
+else color end)
+
+--way 2
+
+with newcolor as (select   
+productkey, case when color ='black' or color = 'silver' then 'basic' else color end as new_color
+from dimproduct)
+
+select new_color
+, sum(salesamount) as total_sales 
+from FactInternetSales as fis 
+left join  newcolor as dp 
+on fis.ProductKey=dp.ProductKey
+group by new_color
+
+/* Ex 4: From the FactInternetsales and Resellersales tables, retrieve saleordernumber, productkey,  
+orderdate, shipdate of orders in October 2011, along with new column named SalesType  
+(if orders come from FactInternetSales then 'Internet', if orders come from FactResellerSales then 'Reseller') */
+
+select salesordernumber, productkey, orderdate, shipdate, 'internet' as SalesType
+from factinternetsales as fis 
+where year(orderdate) = 2011 and month(orderdate) = 10
+union 
+select salesordernumber, productkey, orderdate, shipdate, 'reseller' as SalesType
+from factresellersales as frs 
+where year(orderdate) = 2011 and month(orderdate) = 10
+
+/* Ex 5: (advanced) From database  
+Caculate Total OrderQuantity ( from OrderQuantity column) of each ProductKey from 2 SalesType (Internet, Resell) where:  
+OrderDate in Quarter 3,2013  
+And Customer/Resellers live in London 
+The result should contain the following columns: ProductKey, EnglishProductName, SalesType, TotalOrderQuantity */
+ 
+
+with factsales as(
+    select productkey
+        , 'internet' as salestype
+        , orderquantity
+        , orderdate
+        , geographykey
+            from FactInternetSales as fis
+            left join dimcustomer as dc 
+            on fis.customerkey=dc.CustomerKey
+    UNION
+    select productkey
+        , 'reseller' as salestype
+        , orderquantity
+        , orderdate
+        , geographykey
+            from FactResellerSales as frs
+            left join dimreseller as dr
+            on frs.ResellerKey=dr.ResellerKey
+)
+
+    select factsales.productkey, englishproductname, sum(orderquantity), salestype
+    from factsales 
+    left join dimproduct as dp
+    on factsales.ProductKey=dp.ProductKey
+    left join DimGeography as dg    
+    on factsales.GeographyKey=dg.GeographyKey
+    where city = 'london'
+        and year(orderdate) = 2013
+        and month(orderdate) in (7,8,9)
+    group by factsales.productkey, englishproductname, salestype
+
+/* Ex 6 (advanced): From database, retrieve total SalesAmount monthly of internet_sales and reseller_sales.  
+The result should contain the following columns: Year, Month, Internet_Sales, Reseller_Sales 
+Gợi ý: Tính doanh thu theo từng tháng ở mỗi bảng độc lập FactInternetSales và FactResllerSales bằng sử dụng CTE  */
+
+WITH Internet_sales_by_month AS
+  ( SELECT YEAR(OrderDate) AS YEAR_NUM ,
+           MONTH(OrderDate) AS MONTH_NUM,
+           SUM(SalesAmount) AS Internet_Sale_amount
+   FROM FactInternetSales
+   GROUP BY YEAR(OrderDate),
+            MONTH(OrderDate)),
+            
+     Reseller_sales_by_month AS
+  (
+SELECT YEAR(OrderDate) AS YEAR_NUM,
+       MONTH(OrderDate) AS MONTH_NUM,
+       SUM(SalesAmount) AS Reseller_Sale_amount
+   FROM FactResellerSales
+   GROUP BY YEAR(OrderDate),
+            MONTH(OrderDate))
+            
+SELECT ISNULL(Internet.YEAR_NUM, Reseller.YEAR_NUM) AS YEAR_NUM,
+       ISNULL(Internet.MONTH_NUM, Reseller.MONTH_NUM) AS MONTH_NUM,
+       Internet_Sale_amount,
+       Reseller_Sale_amount
+FROM Internet_sales_by_month AS Internet
+full JOIN Reseller_sales_by_month AS Reseller 
+ON Reseller.MONTH_NUM = Internet.MONTH_NUM
+AND Reseller.YEAR_NUM = Internet.YEAR_NUM
+ORDER BY YEAR_NUM DESC,
+         MONTH_NUM ASC 
+
+--------------------------------------------------------------------------------------
+         /* Ex1: Select the fields below from table DimEmployee: 
+EmployeeKey, FirstName, LastName, BaseRate, VacationHours, SickLeaveHours 
+And then: 
+Generate a new field named “FullName” which is equal to: 
+FirstName + ‘ ’ + LastName 
+Generate a new field named “VacationLeavePay” which is equal to: 
+BaseRate * VacationHours  
+Generate a new field named “SickLeavePay” which is equal to: 
+SickLeaveHours * baserate  
+Generate a new field named “TotalLeavePay” which is equal to: 
+VacationLeavePay+SickLeavePay 
+*/  
+-- Your code here  
+ 
+select EmployeeKey, FirstName, LastName, BaseRate, VacationHours, SickLeaveHours, concat_ws(' ', firstname, lastname) as fullname
+, baserate * VacationHours as vacationleavepay
+,SickLeaveHours * baserate  as SickLeavePay
+, baserate * VacationHours + SickLeaveHours * baserate as TotalLeavePay
+from dimemployee
+
+/* Ex2: Write a query to get SalesOrderNumber, ProductKey, OrderDate from FactInternetSales then caculate: 
+- Total Revenue equal to OrderQuantity*UnitPrice 
+- Total Cost equal to ProductStandardCost + DiscountAmount 
+- Profit equal to Total Revenue - Total Cost 
+- Profit margin equal (Total Revenue - Total Cost)/Total Revenue 
+*/ 
+-- Your code here  
+
+select SalesOrderNumber, ProductKey, OrderDate
+, OrderQuantity*UnitPrice  as totalrevenue
+, ProductStandardCost + DiscountAmount  as totalcost
+, OrderQuantity*UnitPrice - (ProductStandardCost + DiscountAmount) as Profit
+, (OrderQuantity*UnitPrice - (ProductStandardCost + DiscountAmount)) / (OrderQuantity*UnitPrice) as Profit_margin
+from factinternetsales
+
+/* Ex3: Write a query to get DateKey, ProductKey from FactProductInventory then caculate 
+- Number of product end of day equal to UnitsBalance + UnitsIn - UnitsOut 
+- Total Cost equal to Number of product end of day * UnitCost */ 
+-- Your code here  
+
+select DateKey, ProductKey,
+UnitsBalance + UnitsIn - UnitsOut 
+, (UnitsBalance + UnitsIn - UnitsOut ) * UnitsOut as a
+from FactProductInventory
+
+/* Ex1: From DimProduct, get top 10% heaviest by Weight column. Display only ProductKey, EnglishProductName. 
+Then:  
+- Generate a new field named 'End date modified' adding 10 years to EndDate column 
+- Generate new column named 'Number of sell days' using StartDate and 'End date modified' 
+(if 'End date modified' isn't defined then get Today date instead)  */
+
+select top 10 percent ProductKey, EnglishProductName
+, dateadd(year, 10, EndDate) as 'End date modified'
+, datediff(day, startdate, isnull(dateadd(year, 10, EndDate), CURRENT_TIMESTAMP)) as 'Number of sell days'
+from DimProduct
+order by Weight DESC
+
+/* Ex2. From DimEmployee table, get EmployeeKey, then: 
+- Generate a new field named 'Full Name' which combined FirstName, MiddleName, LastName columns 
+(Noted that MiddleName might contain NULL) 
+- Calculate age of each Employee when they are hired using HireDate, BirthDate columns  
+- Calculate age of each Employee today using HireDate column 
+- Get user name of each employee. Username is last part of login ID: adventure-works\jun0 -> Username = jun0 
+*/ 
+
+select employeekey
+    ,concat_ws(' ', firstname, middlename,lastname) as fullname
+    , datediff(year, BirthDate, HireDate) 
+    , datediff(year, hiredate,CURRENT_TIMESTAMP)
+    , substring(loginid, charindex('\', loginid)+1, len(LoginID))
+from dimemployee
+
+/* Ex3. From table DimEmployee, select all records that satisfy one of the following conditions: 
+• DepartmentName is equal to 'Tool Design 
+• Status does NOT include the value NULL 
+• StartDate in the period from '2009-01-01' to '2009-12-31' 
+And must have VacationHours > 10 */ 
+
+select *
+from dimemployee
+where VacationHours >10 and
+ (departmentname ='tool design'
+or status is not null
+or startdate between '2009-01-01' and '2009-12-31')
+
+/*Ex4. From DimProduct display ProductKey, ProductAlternateKey and EnglishProductName of products  
+which have ProductAlternateKey begins with 'BK-' followed by any character other than 'T' and ends with a '-' followed by any two numerals.  
+And satisfy one of the following conditions: 
+· color are black, red, or white  
+· size from 48 to 57  */
+
+select ProductKey, ProductAlternateKey, EnglishProductName
+from dimproduct
+where ProductAlternateKey like 'bk-[^t]%-[0-9][0-9]'
+and 
+(color in ('black', 'red', 'white')
+or try_cast(size as int) between 48 and 57)
+
+/*Ex5. From DimProduct, get ProductKey of products which have Color is 'Red' */
+
+select ProductKey
+from Dimproduct
+where color ='red'
+
+/*Ex6. From FactInternetSales get all records that have sold products which have Color equal to "red" */
+
+select *
+from factinternetsales
+where ProductKey in (
+    select ProductKey
+    from DimProduct
+    where color = 'red'
+)
+--------------------------------------------------------------------------------------
+/*Exercise 1: From dbo.FactInternetSales and dbo.DimSalesTerritory,  
+Write a query displaying SalesOrderNumber, ProductKey, SalesAmount, SalesTerritoryRegion, 
+SalesTerritoryCountry of records that have SalesAmount exceeds 1,000 and the SalesTerritoryRegion is Canada. */ 
+
+select SalesOrderNumber, ProductKey, SalesAmount, SalesTerritoryRegion, 
+SalesTerritoryCountry
+from factinternetsales as fis
+left join dimsalesterritory as dim
+    on fis.SalesTerritoryKey=dim.salesterritorykey 
+
+where salesamount > 1000 
+and SalesTerritoryRegion = 'canada'
+
+/*Exercise 2 : From dbo.DimProduct and DimProductSubcategory,  
+Write a query displaying the Product key,   
+EnglishProductName, and Color columns   
+which has EnglishProductSubCategoryName is 'Mountain Bikes'. 
+And  interger part of ListPrice = 3399 */ 
+
+select Productkey,   
+EnglishProductName
+,Color
+, listprice
+from dimproduct as dp
+left join DimProductSubcategory as dim
+on dp.ProductSubcategoryKey=dim.ProductSubcategoryKey
+where EnglishProductsubcategoryName='mountain bikes'
+and ListPrice between 3399 and 3400
+
+and floor(listprice) =3399
+
+select distinct ListPrice
+from dimproduct
+
+ /* Exercise 3: From FactInternetSales, FactResellerSales and DimProduct  
+Find all SalesOrderNumber, SalesAmount, OrderDate 
+which EnglishProductName contains 'Road' in name and Color is Yellow */
+
+select fis.SalesOrderNumber, fis.SalesAmount, fis.OrderDate, EnglishProductName
+from FactInternetSales as fis
+left join dimproduct as dp 
+on dp.ProductKey = fis.ProductKey
+left join factresellersales as frs 
+on dp.ProductKey=frs.ProductKey
+where EnglishProductName like '%road%'
+and color ='yellow'
+
+/* Exercise 4: From DimProduct,   
+Get ProductKey, EnglishProductName and 2 new columns:     
+•   ProductFlag is generated by the string preceded by the '-' character in EnglishProductName.   
+If EnglishProductName do not have '-' then keep EnglishProductName value.   
+•    GroupSize follows by conditions:     
+- Size is 'S' or less than 43 --> 'small'    
+- Size is 'M' or 'L' or from 43 to 57 --> 'medium'    
+- Size is 'XL' or larger than 57 --> 'big'    
+- NULL --> 'no size' */  
+
+SELECT CHARINDEX('t', 'Customer') AS MatchPosition;
+select productkey
+    ,englishproductname,size
+    ,iif(charindex(englishproductname, '-') = 0,englishproductname, left(englishproductname,charindex(englishproductname, '-')-1)) as productflag 
+    ,case 
+    when size = 's' or try_cast(size as int) <= 43 then 'small'
+    when size in('m','l') or try_cast(size as int) between 43 and 57 then 'medium'
+    when size ='xl' or try_cast(size as int) >57 then 'big'
+    else 'no size' end as groupsize
+from DimProduct
+--------------------------------------------------------------------------------------
+/*1.From FactResellerSales, DimReseller  
+Write a query display SalesOrderNumber, SalesOrderLineNumber, ResellerName, Phone, SalesAmount where:  
+BusinessType là “Warehouse” or “Specialty Bike Shop”.  
+And CarrierTrackingNumber starts with 2 characters, ends with 2 numbers and the 7th character equals to “C” or “F”.  */
+
+select SalesOrderNumber, SalesOrderLineNumber, ResellerName, Phone, SalesAmount
+from factresellersales as frs 
+left join dimreseller as dim
+on frs.ResellerKey=dim.ResellerKey
+where CarrierTrackingNumber like replicate('[a-z]',2) + replicate('_',4)+'[c;f]%' +replicate('[0-9]',2) and
+(BusinessType ='warehouse' or BusinessType ='specialty bike shop')
+
+'[a-z][a-z]____[c;f]%[0-9][0-9]'
+
+/*2.From dbo.DimProduct, dbo.DimPromotion, dbo.FactInternetSales,  
+Write a query display ProductKey, EnglishProductName which has Discount Pct >= 20% */
+   From dbo.DimProduct, dbo.DimPromotion, dbo.FactInternetSales,  
+Write a query display ProductKey, EnglishProductName which has Discount Pct >= 20% 
+select fis.productkey, englishproductname, DiscountPct
+from factinternetsales as fis 
+ full join dimproduct as dp 
+on fis.productkey = dp.ProductKey
+full join dimpromotion as dim 
+on fis.promotionkey=dim.promotionkey 
+where discountpct >=0.2
+
+/*3.From dbo.DimProduct and DimProductSubcategory, DimProductCategrory 
+Write a query displaying the Productkey, EnglishProductName, EnglishProductSubCategoryName , 
+EnglishProductCategroyName columns of product which has EnglishProductCategoryName is 'Clothing' */
+
+
+select Productkey, EnglishProductName, EnglishProductSubCategoryName , 
+EnglishProductCategoryName
+from dimproduct as dp 
+LEFT join DimProductSubcategory as dmp 
+on dp.ProductSubcategoryKey=dmp.ProductSubcategoryKey
+left join DimProductCategory as dim 
+on dmp.ProductCategoryKey=dim.productcategorykey
+where EnglishProductCategoryName = 'Clothing' 
+
+/*4.From FactInternetSales, DimProduct  
+Display ProductKey, EnglishProductName, ListPrice of products which never have been sold  */
+
+select ProductKey, EnglishProductName, ListPrice
+from dimproduct 
+where productkey not in (
+    select distinct ProductKey
+    from factinternetsales
+)
+
+/*5.From DimDepartmentGroup, Write a query display DepartmentGroupName and 
+their parent DepartmentGroupName  */
+
+select dim.departmentgroupname 
+, dim1.DepartmentGroupName as parent
+from dimdepartmentgroup as dim 
+left join dimdepartmentgroup as dim1
+on dim.parentdepartmentgroupkey = dim1.departmentgroupkey
+
+/*7.From FactFinance, DimOrganization, DimScenario 
+Write a query display OrganizationKey, OrganizationName, Parent OrganizationKey, Parent OrganizationName, Amount 
+where ScenarioName is 'Actual'  */
+
+select amount, fac.OrganizationKey, dim.ParentOrganizationKey, dim.OrganizationName, dim1.organizationname as parent
+from factfinance as fac 
+left join DimScenario as ds 
+on fac.scenariokey = ds.ScenarioKey
+left join dimorganization as dim 
+on fac.OrganizationKey=dim.OrganizationKey
+left join DimOrganization as dim1
+on dim.ParentOrganizationKey=dim1.OrganizationKey
+where ScenarioName = 'Actual'
+
+
+
+
+6.  From DimCustomer, PropectiveBuyer 
+Display list Customer/Buyer FullName (combine FirstName, MiddleName, LastName), Gender, 
+EmailAddress then caculate Age of Customer/Buyer now (using BirthDate).  
+
+select concat_ws(' ',firstname, middlename, lastname) as full_name
+    , gender 
+    , emailaddress 
+    , datediff( year, birthdate, CURRENT_TIMESTAMP) as age_o_customer
+from dimcustomer
+
+union all
+select concat_ws(' ',firstname, middlename, lastname) as full_name
+    , gender 
+    , emailaddress 
+    , datediff( year, birthdate, CURRENT_TIMESTAMP) as age_o_buyer
+from ProspectiveBuyer
+--------------------------------------------------------------------------------------
+/*1:Từ bảng DimProduct, DimSalesTerritory và FactInternetSales, 
+hãy truy vấn ra các thông tin sau của các đơn hàng được đặt trong năm 2013 và 2014:*/
+
+select salesordernumber,
+salesorderlinenumber,
+fis.productkey,
+englishproductname,
+salesterritorycountry, 
+salesamount,
+orderquantity
+from factinternetsales as fis 
+left join dimproduct as dp 
+on fis.ProductKey=dp.productkey 
+left join dimsalesterritory as dim 
+on fis.SalesTerritoryKey=dim.SalesTerritoryKey
+where orderdate between '2013-01-01' and '2013-12-31'
+
+/*2:Từ bảng DimProduct, DimSalesTerritory và FactInternetSales, tính tổng doanh thu (đặt tên là InternetTotalSales) 
+và số đơn hàng (đặttên là NumberofOrders) của từng sản phẩm theo mỗi quốc gia từ bảng DimSalesTerritory. 
+Kết quả trả về gồm có các thông tin sau:*/
+
+select SalesTerritoryCountry
+        , fis.ProductKey
+        , englishproductname
+        , sum(salesamount) as internettotalsales
+        , count(fis.ProductKey) as numberoforders
+from factinternetsales as fis 
+left join dimproduct as dp 
+on fis.ProductKey=dp.productkey 
+left join dimsalesterritory as dim 
+on fis.SalesTerritoryKey=dim.SalesTerritoryKey
+group by SalesTerritoryCountry , fis.ProductKey
+        , englishproductname
+
+/*3: Từ bảng DimProduct, DimSalesTerritory và FactInternetSales, hãy tính toán % tỷ trọng doanh thu của từng sản phẩm 
+(đặt tên làPercentofTotaInCountry) trong Tổng doanh thu của mỗi quốc gia. Kết quả trả về gồm có các thông tin sau: */
+
+
+with a as 
+(select salesterritorycountry
+, sum(salesamount) as sales_country
+ from factinternetsales as fis 
+left join dimsalesterritory as dim 
+on fis.SalesTerritoryKey=dim.SalesTerritoryKey
+group by salesterritorycountry
+),b as (select fis.productkey, salesterritorycountry, EnglishProductName
+, sum(salesamount) sales_product
+from factinternetsales as fis 
+left join dimproduct as dp 
+on fis.ProductKey=dp.productkey 
+left join dimsalesterritory as dim 
+on fis.SalesTerritoryKey=dim.SalesTerritoryKey
+group by fis.productkey,salesterritorycountry,EnglishProductName)
+
+select b.salesterritorycountry 
+    , b.productkey
+    , b.englishproductname 
+    , a.sales_country as internettotalsales
+    ,b.sales_product
+    , format(b.sales_product/a.sales_country,'p') as Percentoftotalincountry
+from b
+left join a 
+on b.SalesTerritoryCountry= a.salesterritorycountry
+order by salesterritorycountry asc,productkey asc
+    
+/*4 Từ bảng FactInternetSales, và DimCustomer, hãy truy vấn ra danh sách top 3 khách hàng có tổng doanh thu tháng (đặt tên làCustomerMonthAmount) cao nhất trong hệ thống theo mỗi tháng.Kết quả trả về gồm có các thông tin sau*/
+
+WITH CustomerbyMonth AS (
+    SELECT YEAR(OrderDate)                                                                             AS OrderYear
+         , MONTH(OrderDate)                                                                            AS OrderMonth
+         , DC.CustomerKey
+         , CONCAT_WS(' ', FirstName, MiddleName, LastName)                                        AS CustomerFullname
+         , SUM(SalesAmount)                                                                            AS CustomerMonthAmount
+         , RANK() OVER (PARTITION BY YEAR(OrderDate), MONTH(OrderDate) ORDER BY SUM(SalesAmount) DESC) AS CustomerRank
+    FROM FactInternetSales AS FS
+             LEFT JOIN DimCustomer DC
+                       ON FS.CustomerKey = DC.CustomerKey
+    GROUP BY DC.CustomerKey
+           , CONCAT_WS(' ', FirstName, MiddleName, LastName)
+           , YEAR(OrderDate)
+           , MONTH(OrderDate)
+)
+SELECT OrderYear
+     , OrderMonth
+     , CustomerKey
+     , CustomerFullname
+     , CustomerMonthAmount
+     , Customerrank
+FROM CustomerbyMonth
+WHERE CustomerRank <= 3
+ORDER BY OrderYear asc, OrderMonth asc, CustomerKey asc
+
+/* Câu 5: (1đ)
+Từ bảng FactInternetSales,
+tính toán tổng doanh thu theo từng tháng (đặt tên là InternetMonthAmount). Kết quả trả về gồm có các thông tin sau:
+OrderYear
+OrderMonth
+InternetMonthAmount
+*/
+
+select YEAR(ORDERDATE) as orderyear
+    , month(orderdate) as ordermonth
+    , sum(salesamount) as internetmonthamount 
+    from factinternetsales 
+    group by YEAR(ORDERDATE)
+    , month(orderdate)
+    order by orderyear asc, ordermonth asc
+
+/*6 Từ bảng FactInternetSales hãy tính toán % tăng trưởng doanh thu (đặt tên là PercentSalesGrowth)
+so với cùng kỳ năm trước (ví dụ: Tháng 11 năm 2012 thì so sánh với tháng 11 năm 2011). Kết quả trả về gồm có các thông tin sau:
+OrderYear
+OrderMonth
+InternetMonthAmount
+InternetMonthAmount_LastYear
+PercentSalesGrowth
+*/
+with a as (select year(orderdate) as orderyear
+,month(orderdate) as ordermonth
+, sum(salesamount) as internetmonthamount 
+from FactInternetSales
+group by year(orderdate)
+,month(orderdate))
+
+select a.orderyear
+        , a.ordermonth 
+        , a.internetmonthamount 
+        , b.internetmonthamount as LY
+        , format(a.internetmonthamount/b.internetmonthamount -1,'p') as percent_ad
+        from a
+        left join a as b
+        on a.orderyear -1 =b.orderyear
+        and a.ordermonth=b.ordermonth
+order by a.orderyear
+        , a.ordermonth 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
